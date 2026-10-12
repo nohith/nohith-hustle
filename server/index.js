@@ -131,7 +131,7 @@ app.post("/api/ideas/generate", async (req, res) => {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await client.messages.create({
-      model: process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-latest",
+      model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001",
       max_tokens: 1400,
       system: "You create realistic side-hustle ideas. Return only valid JSON: an array of 3 objects with keys title, category, emoji, demand, level, time, income, rate, description, first, steps, video. steps must be an array of exactly 4 concise strings. rate is an integer from 50 to 99. Do not guarantee earnings; use realistic, clearly approximate ranges. No markdown fences.",
       messages: [{ role: "user", content: "Create three distinct side-hustle ideas for category: " + category + ". User preferences: " + interests + ". Keep them actionable and honest." }]
