@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownRight, ArrowRight, Bookmark, Check, ChevronDown, Clock3,
   Compass, Flame, Lightbulb, Menu, Play, Plus, Search, Sparkles,
@@ -33,6 +33,18 @@ function App() {
   const [selected, setSelected] = useState(null);
   const [toast, setToast] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [trendItems, setTrendItems] = useState([]);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState("");
+  const [trendGeo, setTrendGeo] = useState("US");
+  const [instagramItems, setInstagramItems] = useState([]);
+  const [instagramError, setInstagramError] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [apiHealth, setApiHealth] = useState(null);
+  const [videoResults, setVideoResults] = useState([]);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState("");
 
   const visibleIdeas = useMemo(() => {
     return ideas.filter((idea) => {
@@ -63,6 +75,76 @@ function App() {
     setActiveCategory("All ideas");
     setToast("A fresh idea has been added to your feed.");
     window.setTimeout(() => setToast(""), 2800);
+  };
+
+  useEffect(() => {
+    fetch("/api/health").then((response) => response.json()).then(setApiHealth).catch(() => setApiHealth(null));
+  }, []);
+
+  const fetchLiveTrends = async () => {
+    setTrendLoading(true);
+    setTrendError("");
+    setInstagramError("");
+    try {
+      const googleResponse = await fetch("/api/trends/google?geo=" + encodeURIComponent(trendGeo));
+      const googleData = await googleResponse.json();
+      if (!googleResponse.ok) throw new Error(googleData.detail || googleData.error || "Google Trends request failed.");
+      setTrendItems(googleData.items || []);
+    } catch (error) {
+      setTrendError(error.message || "Could not load live trends.");
+    }
+    try {
+      const instagramResponse = await fetch("/api/trends/instagram?hashtag=sidehustle");
+      const instagramData = await instagramResponse.json();
+      if (!instagramResponse.ok) throw new Error(instagramData.detail || instagramData.error || "Instagram request failed.");
+      setInstagramItems(instagramData.items || []);
+    } catch (error) {
+      setInstagramItems([]);
+      setInstagramError(error.message || "Instagram data is unavailable.");
+    }
+    setTrendLoading(false);
+  };
+
+  const generateAIideas = async () => {
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const response = await fetch("/api/ideas/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: activeCategory === "All ideas" ? "any category" : activeCategory, interests: "practical, realistic, actionable side hustles" })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "AI generation failed.");
+      if (!Array.isArray(data.ideas) || !data.ideas.length) throw new Error("The AI returned no ideas.");
+      setIdeas((current) => [...data.ideas, ...current]);
+      setActiveFilter("All ideas");
+      setActiveCategory("All ideas");
+      setToast("Added " + data.ideas.length + " AI-generated ideas to your feed.");
+      window.setTimeout(() => setToast(""), 3200);
+    } catch (error) {
+      setAiError(error.message || "Could not generate ideas.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const fetchVideos = async () => {
+    if (!activeIdea) return;
+    setVideoLoading(true);
+    setVideoError("");
+    setVideoResults([]);
+    try {
+      const response = await fetch("/api/videos?q=" + encodeURIComponent(activeIdea.video || activeIdea.title));
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "YouTube search failed.");
+      setVideoResults(data.items || []);
+      if (!data.items?.length) setVideoError("No matching videos were returned.");
+    } catch (error) {
+      setVideoError(error.message || "Could not load videos.");
+    } finally {
+      setVideoLoading(false);
+    }
   };
 
   const activeIdea = selected ? ideas.find((idea) => idea.id === selected) : null;
@@ -120,6 +202,7 @@ function App() {
             <p>Side-hustle ideas worth your time, with a clear first step to get you moving.</p>
             <div className="hero-actions">
               <button className="primary-button" onClick={discoverIdea}><Sparkles size={16} /> Discover an idea <ArrowRight size={16} /></button>
+              <button className="secondary-button" onClick={generateAIideas} disabled={aiLoading}><Sparkles size={15} /> {aiLoading ? "Generating..." : "Generate with AI"}</button>
               <div className="hero-proof"><span className="proof-avatars"><i>N</i><i>↗</i><i>✦</i></span><span>Built for curious minds</span></div>
             </div>
           </div>
@@ -142,6 +225,27 @@ function App() {
           <div className="stat-item"><span className="stat-icon stat-orange"><Flame size={17} /></span><div><strong>{ideas.filter((idea) => idea.rate >= 83).length.toString().padStart(2, "0")}</strong><small>Trending picks</small></div></div>
           <div className="stat-item"><span className="stat-icon stat-purple"><Bookmark size={17} /></span><div><strong>{saved.length.toString().padStart(2, "0")}</strong><small>Saved for later</small></div></div>
           <div className="stat-note"><span className="live-pulse" /> Fresh perspective, every day</div>
+        </section>
+
+        <section className="live-section">
+          <div className="live-heading">
+            <div><div className="eyebrow section-eyebrow">LIVE SIGNALS</div><h2>What people are searching<span>.</span></h2><p>Pull current public trend signals and turn them into your next experiment.</p></div>
+            <div className="live-actions">
+              <select value={trendGeo} onChange={(event) => setTrendGeo(event.target.value)} aria-label="Google Trends region">
+                <option value="US">United States</option><option value="IN">India</option><option value="GB">United Kingdom</option><option value="CA">Canada</option><option value="AU">Australia</option>
+              </select>
+              <button className="secondary-button" onClick={fetchLiveTrends} disabled={trendLoading}><TrendingUp size={15} /> {trendLoading ? "Refreshing..." : "Refresh trends"}</button>
+            </div>
+          </div>
+          {trendError && <p className="api-error">{trendError}</p>}
+          {trendItems.length > 0 ? <div className="trend-list">
+            {trendItems.slice(0, 8).map((item, index) => <a className="trend-row" key={item.title + index} href={item.url || "#"} target="_blank" rel="noreferrer"><span className="trend-rank">{String(index + 1).padStart(2, "0")}</span><span className="trend-title">{item.title}<small>{item.source || "Google Trends"}</small></span><span className="trend-traffic">{item.traffic || "Trending"}</span><ArrowRight size={15} /></a>)}
+          </div> : <div className="trend-placeholder"><TrendingUp size={19} /><span>{trendLoading ? "Loading public Google Trends feed..." : "Refresh trends to load current Google searches."}</span></div>}
+          <div className="instagram-line"><div><strong>Instagram hashtag signals</strong><p>{instagramItems.length ? "Showing top media for #sidehustle." : instagramError || "Optional: connect a professional account in .env to query hashtag media."}</p></div>{instagramItems.length > 0 && <span className="instagram-count">{instagramItems.length} posts</span>}</div>
+          {instagramItems.length > 0 && <div className="instagram-grid">{instagramItems.slice(0, 4).map((item, index) => <a key={item.url || index} href={item.url} target="_blank" rel="noreferrer" className="instagram-card">{item.thumbnail && <img src={item.thumbnail} alt="" loading="lazy" />}<span>{item.title || "Instagram post"}</span></a>)}</div>}
+          <div className="live-footnote">Google Trends uses its public trending RSS feed. Instagram results require an eligible Meta Graph API setup; this does not scrape arbitrary Reels.</div>
+          {apiHealth && <div className="service-status"><span className={apiHealth.services?.ai ? "service-on" : ""} /> AI {apiHealth.services?.ai ? "connected" : "needs API key"} <span className={apiHealth.services?.youtube ? "service-on" : ""} /> YouTube {apiHealth.services?.youtube ? "connected" : "needs API key"} <span className={apiHealth.services?.instagram ? "service-on" : ""} /> Instagram {apiHealth.services?.instagram ? "connected" : "optional setup"}</div>}
+          {aiError && <p className="api-error">{aiError}</p>}
         </section>
 
         <section className="feed-section">
@@ -186,7 +290,9 @@ function App() {
           <div className="first-step"><span className="first-step-icon"><Zap size={17} /></span><div><small>YOUR FIRST MOVE</small><p>{activeIdea.first}</p></div></div>
           <h3 className="roadmap-title">A simple action plan</h3>
           <ol className="roadmap">{activeIdea.steps.map((step, index) => <li key={step}><span>{index + 1}</span><p>{step}</p><Check size={15} /></li>)}</ol>
-          <div className="learn-box"><Play size={17} /><div><strong>Keep learning</strong><p>Search YouTube for: “{activeIdea.video}”</p></div></div>
+          <div className="learn-box"><Play size={17} /><div><strong>Keep learning</strong><p>Find practical walkthroughs for this idea on YouTube.</p></div><button className="video-search-button" onClick={fetchVideos} disabled={videoLoading}>{videoLoading ? "Searching..." : "Find videos"} <ArrowRight size={14} /></button></div>
+          {videoError && <p className="api-error video-error">{videoError}</p>}
+          {videoResults.length > 0 && <div className="video-results">{videoResults.map((video) => <a key={video.url} className="video-result" href={video.url} target="_blank" rel="noreferrer">{video.thumbnail && <img src={video.thumbnail} alt="" loading="lazy" />}<span><strong>{video.title}</strong><small>{video.channel}</small></span><Play size={15} /></a>)}</div>}
           <div className="modal-actions"><button className="primary-button" onClick={() => { toggleSaved(activeIdea.id); setToast(saved.includes(activeIdea.id) ? "Removed from saved ideas." : "Saved for your next session."); window.setTimeout(() => setToast(""), 2600); }}>{saved.includes(activeIdea.id) ? <Check size={16} /> : <Bookmark size={16} />}{saved.includes(activeIdea.id) ? "Saved for later" : "Save this idea"}</button><button className="text-button" onClick={() => setSelected(null)}>Back to feed</button></div>
           <p className="disclaimer">Earning ranges are illustrative estimates, not guarantees. Results depend on skills, market, effort, and execution.</p>
         </section>
